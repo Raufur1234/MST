@@ -3,21 +3,15 @@ using namespace std;
 
 const int INF = 1e9;
 
-
 struct node{
 	int id, cost;
-	bool has_elec;
 };
-
 
 vector<int> node_costs; 
 
-
-long long solvewith_prim(int n, int root, const vector<vector<pair<int,int>>> &adj, vector<node> &a) {
+long long solvewith_prim(int n, int root, const vector<vector<pair<int,int>>> &adj, vector<bool> &visited) {
 	vector<int> best(n + 1, INF); 
-	vector<int> parent(n + 1, -1);
-	vector<bool> used(n + 1, false);
-
+	
 	priority_queue<pair<int,int>, vector<pair<int,int>>, greater<pair<int,int>>> pq;
 
 	best[root] = 0;
@@ -32,18 +26,16 @@ long long solvewith_prim(int n, int root, const vector<vector<pair<int,int>>> &a
 		int u = cur.second;
 		int w = cur.first;
 
-		if (used[u]) continue;
-		used[u] = true;
+		if (visited[u]) continue;
+		visited[u] = true;
 		totalWeight += w;
 
 		for (auto &edge : adj[u]) {
 			int v = edge.first;
 			int w = edge.second;
             
-           
-			if (!a[v].has_elec && w < best[v] && w < a[v].cost) {
+			if (!visited[v] && w < best[v] && w < node_costs[v]) {
 				best[v] = w;
-				parent[v] = u;
 				pq.push({best[v], v});
 			}
 		}
@@ -58,29 +50,27 @@ bool comparator2(const node &a, const node &b) {
 
 int main() {
 	int n;
-	cin>>n;
+	if(!(cin >> n)) return 0;
 	
-
 	vector<vector<pair<int,int>>> adj(n + 1);
 	vector<node> a(n + 1);
     node_costs.resize(n + 1); 
+    vector<bool> visited(n + 1, false); 
 
-	
 	for(int i = 1; i <= n; i++){
 		cin >> a[i].cost;
 		a[i].id = i;
-		a[i].has_elec = false;
         node_costs[i] = a[i].cost; 
 	}
 
 	sort(a.begin() + 1, a.end(), comparator2); 
-	int m;
+	
+    int m;
 	cin >> m;
 	for (int i = 0; i < m; i++) {
 		int u, v, w;
 		cin >> u >> v >> w;
 		
-        
 		if(node_costs[u] < w && node_costs[v] < w){
 			continue;
 		}
@@ -90,22 +80,16 @@ int main() {
 		}
 	}
 
-
-    
 	long long total = 0;
 
 	for(int i = 1; i <= n; i++){
         int u = a[i].id; 
         
-        if(!a[i].has_elec || i==1){ {
-            a[i].has_elec = true;
+        if(!visited[u]){ 
             total += a[i].cost;
-            
-           
-            total += solvewith_prim(n, u, adj, a);
+            total += solvewith_prim(n, u, adj, visited);
         }
 	}
-}
 	cout << total;
 
 	return 0;
