@@ -1,0 +1,113 @@
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <numeric>
+
+using namespace std;
+
+// Structure to represent an edge
+struct Edge {
+    int u, v;
+    long long w;
+    int id; // To store the original 1-based index
+};
+
+// Disjoint Set Union (DSU) structure to manage connected components
+struct DSU {
+    vector<int> parent;
+    DSU(int n) {
+        parent.resize(n + 1);
+        // Initialize parent of each node to itself
+        iota(parent.begin(), parent.end(), 0);
+    }
+    
+    // Find with path compression
+    int find(int i) {
+        if (parent[i] == i)
+            return i;
+        return parent[i] = find(parent[i]);
+    }
+    
+    // Union two sets
+    void unite(int i, int j) {
+        int root_i = find(i);
+        int root_j = find(j);
+        if (root_i != root_j) {
+            parent[root_i] = root_j;
+        }
+    }
+};
+
+// Comparator to sort edges by weight descending (Largest first)
+bool compareEdgesDescending(const Edge& a, const Edge& b) {
+    return a.w > b.w;
+}
+
+// Comparator to sort edges by weight ascending (Smallest first)
+bool compareEdgesAscending(const Edge& a, const Edge& b) {
+    return a.w < b.w;
+}
+
+int main() {
+    // Optimization for faster I/O
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+
+    int n, m;
+    long long s;
+    
+    if (!(cin >> n >> m >> s)) return 0;
+
+    vector<Edge> allEdges(m);
+    for (int i = 0; i < m; ++i) {
+        cin >> allEdges[i].u >> allEdges[i].v >> allEdges[i].w;
+        allEdges[i].id = i + 1; // Store 1-based index
+    }
+
+    // Step 1: Sort edges descending to build Maximum Spanning Tree (MaxST)
+    // By keeping the heaviest edges, we force the redundant edges (candidates)
+    // to be the lightest possible.
+    vector<Edge> sortedEdges = allEdges;
+    sort(sortedEdges.begin(), sortedEdges.end(), compareEdgesDescending);
+
+    DSU dsu(n);
+    vector<Edge> candidateEdges;
+
+    // Step 2: Kruskal's Algorithm logic for MaxST
+    for (const auto& edge : sortedEdges) {
+        if (dsu.find(edge.u) != dsu.find(edge.v)) {
+            // This edge connects two different components.
+            // It is ESSENTIAL for the Maximum Spanning Tree.
+            // We MUST KEEP it to ensure we aren't forced to use a lighter edge later.
+            dsu.unite(edge.u, edge.v);
+        } else {
+            // This edge connects vertices already connected by heavier edges.
+            // It is REDUNDANT and is a candidate for deletion.
+            candidateEdges.push_back(edge);
+        }
+    }
+
+    // Step 3: Try to delete redundant edges, cheapest first
+    sort(candidateEdges.begin(), candidateEdges.end(), compareEdgesAscending);
+
+    vector<int> deletedEdgeIndices;
+    for (const auto& edge : candidateEdges) {
+        if (s >= edge.w) {
+            s -= edge.w;
+            deletedEdgeIndices.push_back(edge.id);
+        } else {
+            // Since candidates are sorted ascending, if we can't afford this one,
+            // we can't afford any heavier ones either.
+            break; 
+        }
+    }
+
+    // Output results
+    cout << deletedEdgeIndices.size() << "\n";
+    for (size_t i = 0; i < deletedEdgeIndices.size(); ++i) {
+        cout << deletedEdgeIndices[i] << (i == deletedEdgeIndices.size() - 1 ? "" : " ");
+    }
+    cout << "\n";
+
+    return 0;
+}
