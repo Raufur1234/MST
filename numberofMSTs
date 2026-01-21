@@ -1,0 +1,214 @@
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <map>
+
+using namespace std;
+
+long long MOD = 1e9 + 7;
+
+struct Edge {
+    int u, v, w;
+};
+
+bool compareEdges(const Edge& a, const Edge& b) {
+    return a.w < b.w;
+}
+
+// Modular Exponentiation for Inverse
+long long power(long long base, long long exp) {
+    long long res = 1;
+    base %= MOD;
+    while (exp > 0) {
+        if (exp % 2 == 1) res = (res * base) % MOD;
+        base = (base * base) % MOD;
+        exp /= 2;
+    }
+    return res;
+}
+
+long long modInverse(long long n) {
+    return power(n, MOD - 2);
+}
+
+// Calculate Determinant of Matrix using Gaussian Elimination
+long long determinant(int N, vector<vector<long long>>& mat) {
+    long long det = 1;
+    for (int i = 0; i < N; ++i) {
+        int pivot = i;
+        // Find pivot
+        while (pivot < N && mat[pivot][i] == 0) pivot++;
+        if (pivot == N) return 0; // Singular matrix
+        
+        if (pivot != i) {
+            swap(mat[i], mat[pivot]);
+            det = (det * -1 + MOD) % MOD; // Swapping rows negates determinant
+        }
+        
+        det = (det * mat[i][i]) % MOD;
+        long long inv = modInverse(mat[i][i]);
+        
+        for (int j = i + 1; j < N; ++j) {
+            if (mat[j][i] != 0) {
+                long long factor = (mat[j][i] * inv) % MOD;
+                for (int k = i; k < N; ++k) {
+                    mat[j][k] = (mat[j][k] - factor * mat[i][k]) % MOD;
+                    if (mat[j][k] < 0) mat[j][k] += MOD;
+                }
+            }
+        }
+    }
+    return det;
+}
+
+struct DSU {
+    vector<int> parent;
+    DSU(int n) {
+        parent.resize(n + 1);
+        for(int i=0; i<=n; ++i) parent[i] = i;
+    }
+    int find(int i) {
+        if (parent[i] == i) return i;
+        return parent[i] = find(parent[i]);
+    }
+    void unite(int i, int j) {
+        int root_i = find(i);
+        int root_j = find(j);
+        if (root_i != root_j) parent[root_i] = root_j;
+    }
+};
+
+int main() {
+    int N, M;
+    if (!(cin >> N >> M)) return 0;
+
+    vector<Edge> edges(M);
+    for (int i = 0; i < M; ++i) {
+        cin >> edges[i].u >> edges[i].v >> edges[i].w;
+    }
+
+    sort(edges.begin(), edges.end(), compareEdges);
+
+    DSU dsu(N);
+    long long total_msts = 1;
+    int edges_processed = 0;
+
+    // Iterate through edges in blocks of equal weight
+    for (int i = 0; i < M; ) {
+        int j = i;
+        while (j < M && edges[j].w == edges[i].w) j++;
+        
+        // Block of edges [i, j-1] have the same weight W
+        
+        // We only care about edges that connect DIFFERENT components 
+        // in the DSU formed by edges lighter than W.
+        // We will build a temporary graph where nodes are the 'Component IDs'.
+        
+        // Map: Component Root -> Index in Laplacian Matrix (0, 1, 2...)
+        // Use a vector of vectors to store edges between components for Laplacian construction
+        // "comps" stores the DSU roots involved in this batch
+        vector<int> comps; 
+        vector<pair<int, int>> valid_edges; 
+
+        for (int k = i; k < j; ++k) {
+            int root_u = dsu.find(edges[k].u);
+            int root_v = dsu.find(edges[k].v);
+
+            if (root_u != root_v) {
+                valid_edges.push_back({root_u, root_v});
+                comps.push_back(root_u);
+                comps.push_back(root_v);
+            }
+        }
+        
+        // Remove duplicates and sort components to assign indices
+        sort(comps.begin(), comps.end());
+        comps.erase(unique(comps.begin(), comps.end()), comps.end());
+
+        // Now we need to separate these into disjoint clusters.
+        // The Laplacian must be computed for each connected cluster within this batch separately.
+        
+        // Simple way: Build adjacency for component-nodes
+        map<int, int> root_to_idx;
+        for(int k=0; k<comps.size(); ++k) root_to_idx[comps[k]] = k;
+
+        int K = comps.size();
+        DSU temp_dsu(K); // Local DSU to identify clusters within the batch
+        
+        for (auto& p : valid_edges) {
+            temp_dsu.unite(root_to_idx[p.first], root_to_idx[p.second]);
+        }
+
+        // Group indices by their temp_dsu root
+        vector<vector<int>> clusters(K);
+        for (int k = 0; k < K; ++k) {
+            clusters[temp_dsu.find(k)].push_back(k);
+        }
+
+        // Process each cluster
+        for (auto& cluster : clusters) {
+            if (cluster.size() <= 1) continue; // Single node cluster = no edges needed
+
+            int size = cluster.size();
+            // Create a mapping from Global ID -> Matrix Index [0...size-1]
+            map<int, int> cluster_map;
+            for(int k=0; k<size; ++k) cluster_map[cluster[k]] = k;
+
+            // Build Laplacian Matrix (size-1 x size-1)
+            // Kirchhoff's theorem says we remove one row/col (usually the last one)
+            int mat_size = size - 1;
+            vector<vector<long long>> laplacian(mat_size, vector<long long>(mat_size, 0));
+
+            for (auto& p : valid_edges) {
+                int u_idx = root_to_idx[p.first];
+                int v_idx = root_to_idx[p.second];
+
+                // Check if this edge belongs to the current cluster
+                if (cluster_map.count(u_idx) && cluster_map.count(v_idx)) {
+                    int u = cluster_map[u_idx];
+                    int v = cluster_map[v_idx];
+                    
+                    // Update Laplacian
+                    // Diagonal += 1, Off-diagonal -= 1
+                    if (u < mat_size) laplacian[u][u]++;
+                    if (v < mat_size) laplacian[v][v]++;
+                    
+                    if (u < mat_size && v < mat_size) {
+                        laplacian[u][v]--;
+                        laplacian[v][u]--;
+                    }
+                }
+            }
+            
+            // Adjust negative values for modulo
+            for(int r=0; r<mat_size; ++r)
+                for(int c=0; c<mat_size; ++c)
+                    laplacian[r][c] = (laplacian[r][c] % MOD + MOD) % MOD;
+
+            // Multiply result by cofactor determinant
+            total_msts = (total_msts * determinant(mat_size, laplacian)) % MOD;
+        }
+
+        // Finally, unite the components in the REAL DSU
+        for (int k = i; k < j; ++k) {
+            if (dsu.find(edges[k].u) != dsu.find(edges[k].v)) {
+                dsu.unite(edges[k].u, edges[k].v);
+                edges_processed++;
+            }
+        }
+        
+        i = j; // Move to next weight block
+    }
+
+    // Check if MST is connected
+    int root = dsu.find(1);
+    for(int k=2; k<=N; ++k) {
+        if(dsu.find(k) != root) {
+            cout << 0 << endl;
+            return 0;
+        }
+    }
+
+    cout << total_msts << endl;
+    return 0;
+}
